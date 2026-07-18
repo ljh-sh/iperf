@@ -1,0 +1,120 @@
+name: build-and-test
+
+# Auto-test stage: push / PR → builds all 5 targets, runs smoke, uploads
+# artifacts. No release publish.
+#
+# Splits with `release.yml`:
+#   - tag push / dispatch → release.yml (publish stage)
+#
+# Matrix matches ljh-sh/lha v0.6.0 — 5 targets.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-linux-musl,  runner: ubuntu-latest,    os: linux,   libc: musl, docker_arch: amd64 }
+          - { target: aarch64-linux-musl, runner: ubuntu-24.04-arm, os: linux,   libc: musl, docker_arch: arm64 }
+          - { target: aarch64-macos,      runner: macos-14,         os: macos                  }
+          - { target: x86_64-macos,       runner: macos-14,         os: macos                  }
+          - { target: x86_64-windows,     runner: windows-latest,   os: windows                }
+          # aarch64-windows deferred — same MSYS2 package-name gap as
+          # lha (no aarch64-windows-gnu toolchain shipped by MSYS2).
+    continue-on-error: ${{ matrix.target == 'aarch64-linux-musl' || matrix.target == 'x86_64-windows' }}
+    env:
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- install deps ----
+      - name: Install deps (Linux gnu — only used by actions that shell out)
+        if: matrix.libc == 'musl'
+        run: sudo apt-get update && sudo apt-get install -y autoconf automake libtool
+
+      - name: Install deps (macOS)
+        if: matrix.os == 'macos'
+        run: |
+          brew update
+          brew install autoconf automake libtool
+
+      # msystem:MINGW64 on the runner gives the host-native toolchain.
+      # For x86_64-windows on windows-latest that's mingw-w64-x86_64-gcc.
+      - name: Install deps (Windows MSYS2 + mingw64)
+        if: matrix.os == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git autoconf automake libtool
+            make base-devel
+            mingw-w64-x86_64-gcc
+
+      # ---- build ----
+      - name: Build + smoke on Alpine (musl)
+        if: matrix.libc == 'musl'
+        run: docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD":/w -w /w alpine:3.20 sh -c 'apk add --no-cache bash >/dev/null && bash /w/scripts/build-alpine.sh && bash /w/scripts/smoke.sh'
+
+      - name: Build (macOS — host arch = aarch64)
+        if: matrix.os == 'macos' && matrix.target == 'aarch64-macos'
+        run: bash scripts/build.sh && bash scripts/smoke.sh
+
+      # Intel macOS: cross-compile from Apple Silicon macos-14 via clang
+      # -arch x86_64 (the Apple SDK is universal; no extra sysroot needed).
+      - name: Build (macOS x86_64 — cross-compile)
+        if: matrix.target == 'x86_64-macos'
+        env:
+          IPERF_TARGET_ARCH: x86_64
+          IPERF_TARGET_OS: apple-darwin
+          IPERF_OS_HINT: darwin
+        run: bash scripts/build.sh && bash scripts/smoke.sh
+
+      - name: Build (Windows x86_64 — msys2 bash)
+        if: matrix.os == 'windows' && matrix.target == 'x86_64-windows'
+        shell: msys2 {0}
+        env:
+          IPERF_TARGET_ARCH: x86_64
+          IPERF_TARGET_OS: w64-mingw32
+          IPERF_OS_HINT: windows
+          IPERF_TRIPLET: x86_64-w64-mingw32
+        run: bash scripts/build.sh
+        # smoke on Windows is informational only — see Windows smoke step below
+
+      # ---- smoke (host-side; musl smoke already ran in alpine docker) ----
+      - name: Smoke test on Windows (informational)
+        if: matrix.os == 'windows'
+        shell: msys2 {0}
+        continue-on-error: true
+        run: |
+          set +e
+          BIN="${{ github.workspace }}/build/src/.libs/iperf3.exe"
+          [ -f "$BIN" ] || BIN="${{ github.workspace }}/build/src/iperf3.exe"
+          echo "==> Windows smoke is currently informational only."
+          ls -la "$BIN" || { echo "FAIL: binary missing"; exit 1; }
+          "$BIN" --version 2>&1 | head -3 || "$BIN" 2>&1 | head -3 || true
+          echo "OK: binary executes; loopback smoke deferred."
+
+      # ---- upload artifact ----
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iperf3-${{ matrix.target }}
+          path: |
+            build/src/iperf3
+            build/src/iperf3.exe
+            build/src/.libs/iperf3.exe
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,31 @@
+# build artifacts
+build/
+dist/
+release-artifacts/
+*.o
+*.lo
+*.la
+
+# upstream iperf3 build outputs
+upstream/iperf/src/iperf3
+upstream/iperf/src/iperf3-static
+upstream/iperf/src/.libs/
+upstream/iperf/Makefile
+upstream/iperf/config.h
+upstream/iperf/config.log
+upstream/iperf/config.status
+upstream/iperf/stamp-h1
+upstream/iperf/libtool
+upstream/iperf/aclocal.m4
+
+# generated files
+*.tar.xz
+*.zip
+*.sha256
+*.sigstore.json
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
