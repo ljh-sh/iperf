@@ -25,9 +25,11 @@ JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.nproc 2>/dev/null 
 # Minimal configure args. By default:
 #   --disable-dependency-tracking   (one-shot CI build, no dep graph)
 #   --disable-silent-rules          (so `make` logs each step — CI shows it)
-#   --disable-openssl               (no TLS, no extra audit surface)
-#   --disable-zc                    (no sendfile() — meaningless on Windows)
-CONFIGURE_ARGS="--disable-dependency-tracking --disable-silent-rules --disable-openssl --without-openssl --disable-zc --disable-shared --enable-static"
+#   --with-openssl=no               (no TLS, no extra audit surface)
+#   --without-sctp                  (SCTP rare on portable targets)
+# iperf3's --disable-openssl and --disable-zc are unrecognized and just
+# emit warnings — use --with-openssl=no and let zerocopy auto-disable.
+CONFIGURE_ARGS="--disable-dependency-tracking --disable-silent-rules --with-openssl=no --without-sctp --disable-shared --enable-static --enable-static-bin"
 
 # Cross-compile: IPERF_TARGET_ARCH (x86_64 / aarch64), IPERF_TARGET_OS
 # (apple-darwin / w64-mingw32), IPERF_TRIPLET.
@@ -51,7 +53,12 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 		export CC="${TARGET_ARCH}-w64-mingw32-gcc"
 		export CXX="${TARGET_ARCH}-w64-mingw32-g++"
 		export CFLAGS="-O2 -static"
-		export LDFLAGS="-static -lws2_32 -lpsapi"
+		export LDFLAGS="-static"
+		# iperf3's configure checks for socket() etc. via AC_SEARCH_LIBS
+		# — MinGW ships socket() in -lws2_32 and process APIs in -lpsapi.
+		# These MUST be in LIBS (not LDFLAGS) so autoconf's compile+link
+		# test programs find them during configure.
+		export LIBS="-lws2_32 -lpsapi"
 		;;
 	*)
 		# Generic clang fallback.

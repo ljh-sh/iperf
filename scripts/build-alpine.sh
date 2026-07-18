@@ -17,7 +17,8 @@ apk add --no-cache \
 	automake \
 	libtool \
 	linux-headers \
-	bash
+	bash \
+	python3
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 SRC="$ROOT/upstream/iperf"
@@ -38,16 +39,20 @@ mkdir -p "$BUILD_DIR"
 ( cd "$SRC" \
 	&& find . -maxdepth 2 -name Makefile -delete -o -name 'config.h' -delete -o -name 'config.status' -delete 2>/dev/null || true )
 
-echo "==> configure (musl-static + disable-openssl + disable-zc)"
+echo "==> configure (musl-static + without-openssl + without-sctp)"
+# iperf3 3.19.1 doesn't recognize --disable-openssl or --disable-zc —
+# use --with-openssl=no (the actual flag the upstream checks for) and
+# let zerocopy auto-disable when sendfile() is unavailable.
+# --enable-static-bin adds --static to LDFLAGS via iperf_config_static_bin.m4.
 ( cd "$BUILD_DIR" && "$SRC/configure" \
 		--srcdir="$SRC" \
 		--disable-dependency-tracking \
 		--disable-silent-rules \
 		--disable-shared \
 		--enable-static \
-		--disable-openssl \
-		--without-openssl \
-		--disable-zc )
+		--enable-static-bin \
+		--with-openssl=no \
+		--without-sctp )
 
 echo "==> make"
 ( cd "$BUILD_DIR" && make -j"$(getconf _NPROCESSORS_ONLN)" )
