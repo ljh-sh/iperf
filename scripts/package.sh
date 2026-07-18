@@ -17,6 +17,14 @@ mkdir -p "$OUT_DIR/bin"
 
 # Copy binary + LICENSE/NOTICE/README
 cp "$SRC_BIN" "$OUT_DIR/bin/iperf3"
+
+# Strip debug info (Linux/macOS) — keeps .eh_frame + .dynsym for symbolication,
+# drops .debug_* sections. iperf3 build keeps debug_info by default which
+# bloats the musl-static binary from ~200KB to ~1.4MB.
+if command -v strip >/dev/null 2>&1; then
+	strip "$OUT_DIR/bin/iperf3" || true
+fi
+
 cp "$ROOT/LICENSE"    "$OUT_DIR/LICENSE"
 cp "$ROOT/NOTICE.md"  "$OUT_DIR/NOTICE.md"
 cp "$ROOT/README.md"  "$OUT_DIR/README.md"
