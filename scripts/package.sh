@@ -27,8 +27,9 @@ TARBALL="$ROOT/dist/iperf3-$TARGET.tar.xz"
 ( cd "$ROOT/dist" && tar -cJf "$TARBALL" "iperf3-$TARGET" )
 
 # Per-archive sha256 (basename only, for portability per release-pipeline memory)
-( cd "$ROOT/dist" && sha256sum "$(basename "$TARBALL")" > "$(basename "$TARBALL").sha256" )
+SHA_FILE="$ROOT/dist/iperf3-$TARGET.tar.xz.sha256"
+( cd "$ROOT/dist" && sha256sum "iperf3-$TARGET.tar.xz" > "$SHA_FILE" )
 
 echo "==> packaged:"
 ls -la "$TARBALL"
-cat "$(basename "$TARBALL").sha256"
+cat "$SHA_FILE"
