@@ -27,9 +27,12 @@ JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.nproc 2>/dev/null 
 #   --disable-silent-rules          (so `make` logs each step — CI shows it)
 #   --with-openssl=no               (no TLS, no extra audit surface)
 #   --without-sctp                  (SCTP rare on portable targets)
+#   --disable-shared --enable-static (build static lib only, no .dylib)
 # iperf3's --disable-openssl and --disable-zc are unrecognized and just
 # emit warnings — use --with-openssl=no and let zerocopy auto-disable.
-CONFIGURE_ARGS="--disable-dependency-tracking --disable-silent-rules --with-openssl=no --without-sctp --disable-shared --enable-static --enable-static-bin"
+# NOTE: --enable-static-bin is musl-only (adds --static to LDFLAGS via
+# iperf_config_static_bin.m4; macOS ld rejects --static).
+CONFIGURE_ARGS="--disable-dependency-tracking --disable-silent-rules --with-openssl=no --without-sctp --disable-shared --enable-static"
 
 # Cross-compile: IPERF_TARGET_ARCH (x86_64 / aarch64), IPERF_TARGET_OS
 # (apple-darwin / w64-mingw32), IPERF_TRIPLET.
@@ -44,6 +47,9 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 	case "${IPERF_OS_HINT:-}" in
 	darwin)
 		# Apple SDK is shared between arches; clang auto-discovers via xcrun.
+		# macOS binaries dynamically link to /usr/lib + /System/Library
+		# frameworks — that's the Apple distribution model. We only
+		# verify no Homebrew dylibs leak (see release.yml otool check).
 		export CC=clang
 		export CFLAGS="-arch $TARGET_ARCH -O2 -D_FORTIFY_SOURCE=2"
 		export LDFLAGS="-arch $TARGET_ARCH"
