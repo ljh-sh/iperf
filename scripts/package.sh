@@ -28,7 +28,14 @@ TARBALL="$ROOT/dist/iperf3-$TARGET.tar.xz"
 
 # Per-archive sha256 (basename only, for portability per release-pipeline memory)
 SHA_FILE="$ROOT/dist/iperf3-$TARGET.tar.xz.sha256"
-( cd "$ROOT/dist" && sha256sum "iperf3-$TARGET.tar.xz" > "$SHA_FILE" )
+if command -v sha256sum >/dev/null 2>&1; then
+	( cd "$ROOT/dist" && sha256sum "iperf3-$TARGET.tar.xz" > "$SHA_FILE" )
+elif command -v shasum >/dev/null 2>&1; then
+	( cd "$ROOT/dist" && shasum -a 256 "iperf3-$TARGET.tar.xz" > "$SHA_FILE" )
+else
+	echo "error: neither sha256sum nor shasum available" >&2
+	exit 1
+fi
 
 echo "==> packaged:"
 ls -la "$TARBALL"
