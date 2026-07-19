@@ -57,13 +57,22 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 		# ax_check_openssl.m4 finds it. Without this, configure falls
 		# back to Apple's deprecated /usr/include/openssl (3.0-only,
 		# removed in newer SDKs).
+		#
+		# To keep the binary self-contained (per the user's
+		# self-contained-static preference), link OpenSSL statically
+		# by passing the .a files directly in LDFLAGS. Homebrew's
+		# openssl ships both libcrypto.dylib and libcrypto.a; we pick
+		# the .a so the binary has no openssl runtime dep.
 		OPENSSL_PREFIX="$(brew --prefix openssl@3 2>/dev/null || brew --prefix openssl 2>/dev/null || true)"
 		if [ -n "$OPENSSL_PREFIX" ]; then
 			export PKG_CONFIG_PATH="$OPENSSL_PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+			OPENSSL_STATIC_LIBS="-L$OPENSSL_PREFIX/lib $OPENSSL_PREFIX/lib/libssl.a $OPENSSL_PREFIX/lib/libcrypto.a"
+		else
+			OPENSSL_STATIC_LIBS=""
 		fi
 		export CC=clang
 		export CFLAGS="-arch $TARGET_ARCH -O2 -D_FORTIFY_SOURCE=2"
-		export LDFLAGS="-arch $TARGET_ARCH"
+		export LDFLAGS="-arch $TARGET_ARCH $OPENSSL_STATIC_LIBS"
 		;;
 	msys)
 		# MSYS (msystem: MSYS in setup-msys2) provides a full POSIX
