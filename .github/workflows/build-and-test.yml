@@ -96,17 +96,14 @@ jobs:
           IPERF_OS_HINT: windows
           IPERF_TRIPLET: x86_64-w64-mingw32
         run: |
-          echo "=== MSYS2 location ==="
-          mount | grep msys
-          echo "=== /mingw64 listing ==="
-          ls -la /mingw64/ | head -10
-          echo "=== headers in /mingw64 ==="
-          ls /mingw64/include/sys/socket.h 2>&1 || echo "no /mingw64/include/sys/socket.h"
-          ls /mingw64/x86_64-w64-mingw32/include/sys/socket.h 2>&1 || echo "no /mingw64/x86_64-w64-mingw32/include/sys/socket.h"
-          echo "=== pacman verify headers ==="
-          pacman -Q mingw-w64-x86_64-headers 2>&1
-          echo "=== pkg list ==="
-          pacman -Ql mingw-w64-x86_64-headers 2>&1 | grep -E 'sys/socket|netdb\.h|winsock' | head -5
+          echo "=== which pkg provides sys/socket.h ==="
+          pacman -Fy 2>/dev/null
+          pacman -F /mingw64/include/sys/socket.h 2>&1 | head -3
+          pacman -Qo /mingw64/include/sys/socket.h 2>&1 | head -3
+          echo "=== full file list under /mingw64/include/sys ==="
+          ls /mingw64/include/sys/ 2>&1 | head -10
+          echo "=== check the gcc default search path ==="
+          x86_64-w64-mingw32-gcc -E -x c -v - </dev/null 2>&1 | grep -A 30 'search starts' | head -40
           echo "=== debug: actual compile ==="
           bash scripts/build.sh
         # smoke on Windows is informational only — see Windows smoke step below
