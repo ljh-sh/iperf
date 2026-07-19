@@ -17,6 +17,9 @@ upstream/iperf/config.status
 upstream/iperf/stamp-h1
 upstream/iperf/libtool
 upstream/iperf/aclocal.m4
+# bootstrap artifacts (gitignored in upstream, kept here for offline build)
+!upstream/iperf/configure
+!upstream/iperf/aclocal.m4
 
 # generated files
 *.tar.xz

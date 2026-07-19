@@ -10,7 +10,12 @@
 # Alpine AND every glibc distro (Ubuntu/Debian/Fedora/Arch).
 set -eu
 
-echo "==> apk add: build deps (musl-native toolchain + openssl)"
+echo "==> apk add: build deps (musl-native toolchain + libressl)"
+# Alpine's openssl-dev ships only .so (no libcrypto.a/libssl.a), so
+# --enable-static-bin would silently drop openssl. LibreSSL ships
+# libcrypto.a + libssl.a statically — full RSA auth features baked
+# into a single static binary. LibreSSL is API-compatible with
+# iperf3's EVP_PKEY / PEM_*/ RSA usage (forked from OpenSSL 1.0.x).
 apk add --no-cache \
 	build-base \
 	autoconf \
@@ -19,7 +24,7 @@ apk add --no-cache \
 	linux-headers \
 	bash \
 	python3 \
-	openssl-dev
+	libressl-dev
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 SRC="$ROOT/upstream/iperf"
