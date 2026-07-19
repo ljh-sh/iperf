@@ -96,6 +96,12 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 		export ac_cv_search_clock_gettime="ws2_32"
 		export ac_cv_search_nanosleep="ws2_32"
 		export ac_cv_search_clock_nanosleep="no"
+		# MinGW's <stdatomic.h> AC_LINK_IFELSE test fails under -static
+		# (the always_lock_free intrinsic check can't link a libatomic
+		# shim cleanly). iperf3 has a fallback (typedef uint64_t
+		# atomic_uint_fast64_t) when HAVE_STDATOMIC_H is undefined —
+		# pre-seed the cache to take that fallback path.
+		export ac_cv_header_stdatomic_h="no"
 		;;
 	*)
 		# Generic clang fallback.
