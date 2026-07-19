@@ -5,11 +5,11 @@
 # Used by:
 #   - .github/workflows/build-and-test.yml + release.yml on:
 #       macos-14            (host arch = aarch64-macos; cross to x86_64)
-#       windows-latest      (MSYS2/mingw64 x86_64)
+#       windows-latest      (MSYS2/MSYS x86_64)
 #   - Local development on any POSIX host with autotools.
 #
 # Cross-compile: set IPERF_TARGET_ARCH + IPERF_TARGET_OS (or
-# IPERF_TRIPLET) + IPERF_OS_HINT (darwin | windows).
+# IPERF_TRIPLET) + IPERF_OS_HINT (darwin | msys).
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -29,22 +29,44 @@ JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.nproc 2>/dev/null 
 #   --without-sctp                  (SCTP rare on portable targets)
 #   --disable-shared --enable-static (build static lib only, no .dylib)
 # iperf3's --disable-openssl and --disable-zc are unrecognized and just
-# emit warnings — use --with-openssl (without value = detect) and let
-# zerocopy auto-disable. NOTE: --enable-static-bin is musl-only (adds
-# --static to LDFLAGS via iperf_config_static_bin.m4; macOS ld rejects
-# --static). On macOS/Windows we set --enable-static (default=yes per
-# iperf3 help) so libiperf.a is built, but the binary itself links
-# dynamically to system frameworks (Apple model) or to ws2_32 (MinGW).
+# emit warnings — use --with-openssl (without value = autodetect) and
+# let zerocopy auto-disable. NOTE: --enable-static-bin is musl-only
+# (adds --static to LDFLAGS via iperf_config_static_bin.m4; macOS ld
+# rejects --static). On macOS/Windows we set --enable-static (default
+# yes per iperf3 help) so libiperf.a is built, but the binary itself
+# links dynamically to system frameworks (Apple model) or to ws2_32
+# (MinGW/MSYS).
 CONFIGURE_ARGS="--disable-dependency-tracking --disable-silent-rules --without-sctp --disable-shared --enable-static"
 
 # Cross-compile: IPERF_TARGET_ARCH (x86_64 / aarch64), IPERF_TARGET_OS
-# (apple-darwin / w64-mingw32), IPERF_TRIPLET.
+# (apple-darwin / msys), IPERF_TRIPLET.
 HOST_ARCH="$(uname -m 2>/dev/null || echo unknown)"
 TARGET_ARCH="${IPERF_TARGET_ARCH:-$HOST_ARCH}"
 TRIPLET="${IPERF_TRIPLET:-}"
 if [ -n "${IPERF_TARGET_OS:-}" ]; then
 	TRIPLET="${TRIPLET:-${IPERF_TARGET_ARCH}-${IPERF_TARGET_OS}}"
 fi
+
+# macOS builds always need force_load openssl (for self-contained
+# binaries per user preference). Detect host macOS regardless of
+# cross-compile status so native aarch64/macos also picks up the
+# static openssl.
+MACOS_FORCE_LOAD_OPENSSL=""
+if [ "$(uname -s 2>/dev/null)" = "Darwin" ] || [ "${IPERF_OS_HINT:-}" = "darwin" ]; then
+	OPENSSL_PREFIX="$(brew --prefix openssl@3 2>/dev/null || brew --prefix openssl 2>/dev/null || true)"
+	if [ -n "$OPENSSL_PREFIX" ]; then
+		export PKG_CONFIG_PATH="$OPENSSL_PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+		SSL_A="$OPENSSL_PREFIX/lib/libssl.a"
+		CRYPTO_A="$OPENSSL_PREFIX/lib/libcrypto.a"
+		# -Wl,-force_load,<archive> is the macOS ld canonical way to
+		# force-include every symbol from a static archive (macOS ld
+		# rejects -static). libssl.a transitively pulls libcrypto.a
+		# via its .o references, so we don't need to force_load both
+		# — but doing both is robust and explicit.
+		MACOS_FORCE_LOAD_OPENSSL="-Wl,-force_load,$SSL_A -Wl,-force_load,$CRYPTO_A"
+	fi
+fi
+
 if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 	[ -z "$TRIPLET" ] && TRIPLET="$TARGET_ARCH"
 	case "${IPERF_OS_HINT:-}" in
@@ -52,27 +74,10 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 		# Apple SDK is shared between arches; clang auto-discovers via xcrun.
 		# macOS binaries dynamically link to /usr/lib + /System/Library
 		# frameworks — that's the Apple distribution model.
-		#
-		# To stay self-contained (per the user's preference), we
-		# force-link Homebrew's openssl .a archives via
-		# -Wl,-force_load. macOS ld rejects -static (unlike Linux),
-		# so -Wl,-force_load,<archive> is the canonical way to make
-		# the linker include every symbol from the archive instead
-		# of letting -lssl resolve to libssl.dylib at install_name
-		# lookup time. We force-load libssl.a (which transitively
-		# pulls libcrypto.a through its .o references).
-		OPENSSL_PREFIX="$(brew --prefix openssl@3 2>/dev/null || brew --prefix openssl 2>/dev/null || true)"
-		if [ -n "$OPENSSL_PREFIX" ]; then
-			export PKG_CONFIG_PATH="$OPENSSL_PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-			SSL_A="$OPENSSL_PREFIX/lib/libssl.a"
-			CRYPTO_A="$OPENSSL_PREFIX/lib/libcrypto.a"
-			FORCE_LOAD_OPENSSL="-Wl,-force_load,$SSL_A -Wl,-force_load,$CRYPTO_A"
-		else
-			FORCE_LOAD_OPENSSL=""
-		fi
+		# OpenSSL is statically linked via -Wl,-force_load (set above).
 		export CC=clang
 		export CFLAGS="-arch $TARGET_ARCH -O2 -D_FORTIFY_SOURCE=2"
-		export LDFLAGS="-arch $TARGET_ARCH $FORCE_LOAD_OPENSSL"
+		export LDFLAGS="-arch $TARGET_ARCH $MACOS_FORCE_LOAD_OPENSSL"
 		;;
 	msys)
 		# MSYS (msystem: MSYS in setup-msys2) provides a full POSIX
@@ -82,9 +87,9 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 		# doesn't formally support Windows, but MSYS is the closest
 		# POSIX layer setup-msys2@v2 offers (CYGWIN64 isn't supported).
 		# WIN32_LEAN_AND_MEAN skips wincrypt.h's deprecated X509_NAME
-		# numeric define that conflicts with OpenSSL's typedef.
-		export CC="gcc"
-		export CXX="g++"
+		# numeric define that conflicts with OpenSSL typedef.
+		export CC="${TARGET_ARCH}-pc-msys-gcc"
+		export CXX="${TARGET_ARCH}-pc-msys-g++"
 		export CFLAGS="-O2 -D_FORTIFY_SOURCE=2 -DWIN32_LEAN_AND_MEAN"
 		export LDFLAGS=""
 		;;
@@ -98,17 +103,20 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 	CONFIGURE_ARGS="$CONFIGURE_ARGS --host=$TRIPLET"
 	[ -n "${IPERF_BUILD_TRIPLET:-}" ] && CONFIGURE_ARGS="$CONFIGURE_ARGS --build=$IPERF_BUILD_TRIPLET"
 	echo "==> cross-compile: host=$HOST_ARCH → target=$TARGET_ARCH ($TRIPLET)"
+else
+	# Native build (host arch = target arch). Set macOS-specific
+	# LDFLAGS for force_load openssl so aarch64-macos native also
+	# gets self-contained binaries.
+	if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+		export CC=clang
+		export CFLAGS="-O2 -D_FORTIFY_SOURCE=2"
+		export LDFLAGS="$MACOS_FORCE_LOAD_OPENSSL"
+	fi
 fi
 
 # Clean stale state from prior builds (defensive)
 ( cd "$SRC" \
 	&& find . -maxdepth 2 -name Makefile -delete -o -name 'config.h' -delete -o -name 'config.status' -delete 2>/dev/null || true )
-
-# Windows builds via Cygwin (msystem: CYGWIN64 in setup-msys2) provide
-# full POSIX headers (sys/socket.h, netdb.h, etc.) so no source patch
-# is needed. We previously tried MinGW-w64 but its runtime is missing
-# the POSIX-style wrappers iperf3 expects (only winsock2.h, no
-# sys/socket.h). Cygwin is iperf3's de-facto Windows build env.
 
 mkdir -p "$BUILD_DIR"
 
@@ -119,7 +127,7 @@ echo "==> make"
 ( cd "$BUILD_DIR" && make -j"$JOBS" )
 
 echo "==> built:"
-if [ "${IPERF_OS_HINT:-}" = "windows" ]; then
+if [ "${IPERF_OS_HINT:-}" = "msys" ]; then
 	ls -l "$BUILD_DIR/src/.libs/iperf3.exe" 2>/dev/null || ls -l "$BUILD_DIR/src/iperf3.exe"
 else
 	ls -l "$BUILD_DIR/src/iperf3"
