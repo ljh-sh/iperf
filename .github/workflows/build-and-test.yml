@@ -73,7 +73,7 @@ jobs:
       # ---- build ----
       - name: Build + smoke on Alpine (musl)
         if: matrix.libc == 'musl'
-        run: docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD":/w -w /w alpine:3.20 sh -c 'bash /w/scripts/build-alpine.sh && bash /w/scripts/smoke.sh'
+        run: docker run --rm --platform linux/${{ matrix.docker_arch }} -v "$PWD":/w -w /w alpine:3.20 sh -c 'apk add --no-cache bash >/dev/null && bash /w/scripts/build-alpine.sh && bash /w/scripts/smoke.sh'
 
       - name: Build (macOS — host arch = aarch64)
         if: matrix.os == 'macos' && matrix.target == 'aarch64-macos'
