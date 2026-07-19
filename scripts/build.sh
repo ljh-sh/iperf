@@ -123,6 +123,24 @@ mkdir -p "$BUILD_DIR"
 echo "==> configure"
 ( cd "$BUILD_DIR" && "$SRC/configure" --srcdir="$SRC" $CONFIGURE_ARGS )
 
+# macOS: post-process generated Makefile to replace `-lssl -lcrypto`
+# (which would resolve to libssl.dylib / libcrypto.dylib via the
+# Homebrew -L path) with the explicit .a archive paths. -force_load
+# alone extracts symbols from the .a but doesn't prevent the dylib
+# install_name reference, so we must remove the -l lookup.
+# macOS ld doesn't support gcc's `-l:libssl.a` colon syntax.
+if [ "$(uname -s 2>/dev/null)" = "Darwin" ] && [ -n "$OPENSSL_PREFIX" ]; then
+	echo "==> macOS post-process: replace -lssl -lcrypto with explicit .a paths"
+	SSL_A_REL="$OPENSSL_PREFIX/lib/libssl.a"
+	CRYPTO_A_REL="$OPENSSL_PREFIX/lib/libcrypto.a"
+	( cd "$BUILD_DIR" && \
+		find . -name Makefile -print0 | xargs -0 sed -i '' \
+			-e "s|-lssl -lcrypto|$SSL_A_REL $CRYPTO_A_REL|g" \
+			-e "s|-lssl|$SSL_A_REL|g" \
+			-e "s|-lcrypto|$CRYPTO_A_REL|g" \
+	)
+fi
+
 echo "==> make"
 ( cd "$BUILD_DIR" && make -j"$JOBS" )
 
