@@ -75,12 +75,16 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 		export CC="${TARGET_ARCH}-w64-mingw32-gcc"
 		export CXX="${TARGET_ARCH}-w64-mingw32-g++"
 		export CFLAGS="-O2 -static -D_WIN32_WINNT=0x0601 -include winsock2.h"
-		export LDFLAGS="-static"
-		# iperf3's configure checks for socket() etc. via AC_SEARCH_LIBS
-		# — MinGW ships socket() in -lws2_32 and process APIs in -lpsapi.
-		# These MUST be in LIBS (not LDFLAGS) so autoconf's compile+link
-		# test programs find them during configure.
+		export LDFLAGS="-static -lws2_32 -lpsapi"
 		export LIBS="-lws2_32 -lpsapi"
+		# iperf3 3.19.1's configure.ac does:
+		#   AC_SEARCH_LIBS(socket, [socket], [], [echo "socket()"; exit 1])
+		# AC_SEARCH_LIBS only searches its explicit list — it does NOT
+		# honor user-supplied LIBS for the lookup. So even with LIBS=
+		# -lws2_32 in env, configure falls through to "exit 1" because
+		# -lsocket doesn't exist on MinGW. Pre-seed the autoconf cache
+		# so the search short-circuits with the correct answer.
+		export ac_cv_search_socket="ws2_32"
 		;;
 	*)
 		# Generic clang fallback.
