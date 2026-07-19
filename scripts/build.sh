@@ -114,14 +114,22 @@ else
 	fi
 fi
 
+# Clean stale state from prior builds (defensive)
+( cd "$SRC" \
+	&& find . -maxdepth 2 -name Makefile -delete -o -name 'config.h' -delete -o -name 'config.status' -delete 2>/dev/null || true )
+
+mkdir -p "$BUILD_DIR"
+
+echo "==> configure"
+( cd "$BUILD_DIR" && "$SRC/configure" --srcdir="$SRC" $CONFIGURE_ARGS )
+
 # macOS: post-configure hook — strip -lssl -lcrypto from the
-# generated Makefiles (replacing with empty) so the linker doesn't
-# also pull in Homebrew's libssl.dylib / libcrypto.dylib at the
-# same time as our force_load .a. Force-loaded symbols from the .a
-# already provide all referenced symbols; -lssl would just add a
-# redundant dylib reference.
-# Use word-boundary sed: only replace `-lssl` / `-lcrypto` when
-# preceded by whitespace (so we don't touch `libssl.la` etc.).
+# generated Makefiles so the linker doesn't also pull in Homebrew's
+# libssl.dylib / libcrypto.dylib at the same time as our force_load
+# .a. Force-loaded symbols from the .a already provide all referenced
+# symbols; -lssl would just add a redundant dylib reference.
+# Word-boundary sed (leading space) ensures we don't accidentally
+# strip libssl.la references inside libtool's dependency lists.
 if [ "$(uname -s 2>/dev/null)" = "Darwin" ] && [ -n "$OPENSSL_PREFIX" ]; then
 	echo "==> macOS post-process: strip -lssl -lcrypto (force_load .a already provides symbols)"
 	( cd "$BUILD_DIR" && \
@@ -131,15 +139,6 @@ if [ "$(uname -s 2>/dev/null)" = "Darwin" ] && [ -n "$OPENSSL_PREFIX" ]; then
 			-e 's| -lcrypto||g' \
 	)
 fi
-
-# Clean stale state from prior builds (defensive)
-( cd "$SRC" \
-	&& find . -maxdepth 2 -name Makefile -delete -o -name 'config.h' -delete -o -name 'config.status' -delete 2>/dev/null || true )
-
-mkdir -p "$BUILD_DIR"
-
-echo "==> configure"
-( cd "$BUILD_DIR" && "$SRC/configure" --srcdir="$SRC" $CONFIGURE_ARGS )
 
 echo "==> make"
 ( cd "$BUILD_DIR" && make -j"$JOBS" )
