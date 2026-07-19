@@ -88,8 +88,8 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 		# POSIX layer setup-msys2@v2 offers (CYGWIN64 isn't supported).
 		# WIN32_LEAN_AND_MEAN skips wincrypt.h's deprecated X509_NAME
 		# numeric define that conflicts with OpenSSL typedef.
-		export CC="${TARGET_ARCH}-pc-msys-gcc"
-		export CXX="${TARGET_ARCH}-pc-msys-g++"
+		export CC="gcc"
+		export CXX="g++"
 		export CFLAGS="-O2 -D_FORTIFY_SOURCE=2 -DWIN32_LEAN_AND_MEAN"
 		export LDFLAGS=""
 		;;
