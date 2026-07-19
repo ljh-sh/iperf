@@ -51,26 +51,28 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 	darwin)
 		# Apple SDK is shared between arches; clang auto-discovers via xcrun.
 		# macOS binaries dynamically link to /usr/lib + /System/Library
-		# frameworks — that's the Apple distribution model. We only
-		# verify no Homebrew dylibs leak (see release.yml otool check).
-		# Homebrew openssl is keg-only; point pkg-config at it so iperf3's
-		# ax_check_openssl.m4 finds it. Without this, configure falls
-		# back to Apple's deprecated /usr/include/openssl (3.0-only,
-		# removed in newer SDKs).
+		# frameworks — that's the Apple distribution model.
 		#
-		# To keep the binary self-contained (per the user's
-		# self-contained-static preference), pkg-config --static
-		# returns only the static archive flags (-l:libssl.a
-		# -l:libcrypto.a) so iperf3 links them in directly. Homebrew's
-		# openssl ships both libcrypto.dylib and libcrypto.a.
+		# To stay self-contained (per the user's preference), we
+		# force-link Homebrew's openssl .a archives via
+		# -Wl,-force_load. macOS ld rejects -static (unlike Linux),
+		# so -Wl,-force_load,<archive> is the canonical way to make
+		# the linker include every symbol from the archive instead
+		# of letting -lssl resolve to libssl.dylib at install_name
+		# lookup time. We force-load libssl.a (which transitively
+		# pulls libcrypto.a through its .o references).
 		OPENSSL_PREFIX="$(brew --prefix openssl@3 2>/dev/null || brew --prefix openssl 2>/dev/null || true)"
 		if [ -n "$OPENSSL_PREFIX" ]; then
 			export PKG_CONFIG_PATH="$OPENSSL_PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-			export PKG_CONFIG="pkg-config --static"
+			SSL_A="$OPENSSL_PREFIX/lib/libssl.a"
+			CRYPTO_A="$OPENSSL_PREFIX/lib/libcrypto.a"
+			FORCE_LOAD_OPENSSL="-Wl,-force_load,$SSL_A -Wl,-force_load,$CRYPTO_A"
+		else
+			FORCE_LOAD_OPENSSL=""
 		fi
 		export CC=clang
 		export CFLAGS="-arch $TARGET_ARCH -O2 -D_FORTIFY_SOURCE=2"
-		export LDFLAGS="-arch $TARGET_ARCH"
+		export LDFLAGS="-arch $TARGET_ARCH $FORCE_LOAD_OPENSSL"
 		;;
 	msys)
 		# MSYS (msystem: MSYS in setup-msys2) provides a full POSIX
