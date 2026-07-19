@@ -35,7 +35,7 @@ JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.nproc 2>/dev/null 
 # --static). On macOS/Windows we set --enable-static (default=yes per
 # iperf3 help) so libiperf.a is built, but the binary itself links
 # dynamically to system frameworks (Apple model) or to ws2_32 (MinGW).
-CONFIGURE_ARGS="--disable-dependency-tracking --disable-silent-rules --with-openssl --without-sctp --disable-shared --enable-static"
+CONFIGURE_ARGS="--disable-dependency-tracking --disable-silent-rules --with-openssl=yes --without-sctp --disable-shared --enable-static"
 
 # Cross-compile: IPERF_TARGET_ARCH (x86_64 / aarch64), IPERF_TARGET_OS
 # (apple-darwin / w64-mingw32), IPERF_TRIPLET.

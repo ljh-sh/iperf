@@ -52,7 +52,7 @@ echo "==> configure (musl-static + with-openssl + without-sctp)"
 		--disable-shared \
 		--enable-static \
 		--enable-static-bin \
-		--with-openssl \
+		--with-openssl=yes \
 		--without-sctp )
 
 echo "==> make"
