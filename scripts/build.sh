@@ -65,43 +65,16 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 		export CFLAGS="-arch $TARGET_ARCH -O2 -D_FORTIFY_SOURCE=2"
 		export LDFLAGS="-arch $TARGET_ARCH"
 		;;
-	windows)
-		# MinGW cross-toolchain. iperf3 on MinGW has a long-standing
-		# portability gap: sys/socket.h (and friends) require winsock2.h
-		# to be included first. Force-include winsock2.h via CFLAGS so
-		# every TU gets it before its first network header. Also define
-		# _WIN32_WINNT=0x0601 (Windows 7+) so newer MinGW headers
-		# expose the full API surface iperf3 needs.
-		export CC="${TARGET_ARCH}-w64-mingw32-gcc"
-		export CXX="${TARGET_ARCH}-w64-mingw32-g++"
-		export CFLAGS="-O2 -static -D_WIN32_WINNT=0x0601 -include winsock2.h"
-		export LDFLAGS="-static -lws2_32 -lpsapi"
-		export LIBS="-lws2_32 -lpsapi"
-		# iperf3 3.19.1's configure.ac does:
-		#   AC_SEARCH_LIBS(socket, [socket], [], [echo "socket()"; exit 1])
-		#   AC_SEARCH_LIBS(inet_ntop, [nsl], [], [echo "inet_ntop()"; exit 1])
-		#   AC_SEARCH_LIBS(clock_gettime, [rt posix4])
-		#   AC_SEARCH_LIBS(nanosleep, [rt posix4])
-		#   AC_SEARCH_LIBS(clock_nanosleep, [rt posix4])
-		# AC_SEARCH_LIBS only searches its explicit list — it does NOT
-		# honor user-supplied LIBS for the lookup. So even with LIBS=
-		# -lws2_32 in env, configure falls through to "exit 1" because
-		# -lsocket / -lnsl don't exist on MinGW. Pre-seed the autoconf
-		# cache so the searches short-circuit with the correct answer.
-		# On MinGW: socket/inet_ntop/clock_gettime/nanosleep are all in
-		# ws2_32; clock_nanosleep is not available, but the iperf3 source
-		# only uses it conditionally so "no" (skip) is safe.
-		export ac_cv_search_socket="ws2_32"
-		export ac_cv_search_inet_ntop="ws2_32"
-		export ac_cv_search_clock_gettime="ws2_32"
-		export ac_cv_search_nanosleep="ws2_32"
-		export ac_cv_search_clock_nanosleep="no"
-		# MinGW's <stdatomic.h> AC_LINK_IFELSE test fails under -static
-		# (the always_lock_free intrinsic check can't link a libatomic
-		# shim cleanly). iperf3 has a fallback (typedef uint64_t
-		# atomic_uint_fast64_t) when HAVE_STDATOMIC_H is undefined —
-		# pre-seed the cache to take that fallback path.
-		export ac_cv_header_stdatomic_h="no"
+	cygwin)
+		# Cygwin (msystem: CYGWIN64 in setup-msys2) provides a full
+		# POSIX environment, so iperf3 builds cleanly with no source
+		# patches. Cygwin's gcc produces an iperf3.exe that depends on
+		# cygwin1.dll — users must have Cygwin installed (or run via
+		# `cygstart`). This is iperf3's documented Windows build path.
+		export CC="${TARGET_ARCH}-pc-cygwin-gcc"
+		export CXX="${TARGET_ARCH}-pc-cygwin-g++"
+		export CFLAGS="-O2 -D_FORTIFY_SOURCE=2"
+		export LDFLAGS=""
 		;;
 	*)
 		# Generic clang fallback.
@@ -119,41 +92,11 @@ fi
 ( cd "$SRC" \
 	&& find . -maxdepth 2 -name Makefile -delete -o -name 'config.h' -delete -o -name 'config.status' -delete 2>/dev/null || true )
 
-# MinGW portability patch: iperf3's POSIX includes (sys/socket.h,
-# netdb.h, etc.) require <winsock2.h> to be included first on
-# MSYS2/MinGW. Force-include via CFLAGS works for the build itself
-# but autotools-generated compile rules emit explicit -I paths that
-# shadow the system MinGW includes, so the force-include can't find
-# winsock2.h either. The robust fix is to sed-patch each affected
-# source file to prepend <winsock2.h> before its first network
-# header. Idempotent — safe to re-run.
-if [ "${IPERF_OS_HINT:-}" = "windows" ]; then
-	echo "==> windows patch: prepend <winsock2.h> before POSIX network headers"
-	( cd "$SRC/src" && \
-		for f in *.c *.h; do
-			[ -f "$f" ] || continue
-			# Skip if already patched
-			grep -q '__IPERF_WIN32_WS2_PATCH__' "$f" 2>/dev/null && continue
-			# Skip files that don't have network headers (e.g. main.c does)
-			grep -qE '#include[[:space:]]*<sys/socket\.h>|<netinet/in\.h>|<netdb\.h>' "$f" || continue
-			# Insert winsock2.h right before the first such include
-			awk '
-				/^#include[[:space:]]*<sys\/socket\.h>|^#include[[:space:]]*<netinet\/in\.h>|^#include[[:space:]]*<netdb\.h>/ \
-					&& !done { \
-					print "#define __IPERF_WIN32_WS2_PATCH__"; \
-					print "#ifdef _WIN32"; \
-					print "#  ifndef _WINSOCK2_H_"; \
-					print "#    include <winsock2.h>"; \
-					print "#    include <ws2tcpip.h>"; \
-					print "#  endif"; \
-					print "#endif"; \
-					done=1 \
-				} \
-				{ print }
-			' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-		done \
-	)
-fi
+# Windows builds via Cygwin (msystem: CYGWIN64 in setup-msys2) provide
+# full POSIX headers (sys/socket.h, netdb.h, etc.) so no source patch
+# is needed. We previously tried MinGW-w64 but its runtime is missing
+# the POSIX-style wrappers iperf3 expects (only winsock2.h, no
+# sys/socket.h). Cygwin is iperf3's de-facto Windows build env.
 
 mkdir -p "$BUILD_DIR"
 
