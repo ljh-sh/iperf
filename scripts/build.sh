@@ -65,14 +65,15 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 		export CFLAGS="-arch $TARGET_ARCH -O2 -D_FORTIFY_SOURCE=2"
 		export LDFLAGS="-arch $TARGET_ARCH"
 		;;
-	cygwin)
-		# Cygwin (msystem: CYGWIN64 in setup-msys2) provides a full
-		# POSIX environment, so iperf3 builds cleanly with no source
-		# patches. Cygwin's gcc produces an iperf3.exe that depends on
-		# cygwin1.dll — users must have Cygwin installed (or run via
-		# `cygstart`). This is iperf3's documented Windows build path.
-		export CC="${TARGET_ARCH}-pc-cygwin-gcc"
-		export CXX="${TARGET_ARCH}-pc-cygwin-g++"
+	msys)
+		# MSYS (msystem: MSYS in setup-msys2) provides a full POSIX
+		# environment, so iperf3 builds cleanly with no source patches.
+		# The resulting iperf3.exe depends on msys-2.0.dll — users need
+		# MSYS2 installed (or runtime dll bundled). iperf3's upstream
+		# doesn't formally support Windows, but MSYS is the closest
+		# POSIX layer setup-msys2@v2 offers (CYGWIN64 isn't supported).
+		export CC="gcc"
+		export CXX="g++"
 		export CFLAGS="-O2 -D_FORTIFY_SOURCE=2"
 		export LDFLAGS=""
 		;;

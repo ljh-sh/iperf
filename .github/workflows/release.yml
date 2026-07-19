@@ -53,16 +53,15 @@ jobs:
           brew update
           brew install autoconf automake libtool openssl@3
 
-      - name: Install deps (Windows Cygwin64 + gcc + openssl + autoconf)
+      - name: Install deps (Windows MSYS + gcc + openssl + autoconf)
         if: matrix.os == 'windows'
         uses: msys2/setup-msys2@v2
         with:
-          msystem: CYGWIN64
+          msystem: MSYS
           update: true
           install: >-
             git
-            gcc-core
-            gcc-g++
+            gcc
             make
             autoconf
             automake
@@ -71,7 +70,6 @@ jobs:
             openssl
             libssl-devel
             diffutils
-            bash
 
       # ---- build ----
       - name: Build + smoke on Alpine (musl)
@@ -90,14 +88,14 @@ jobs:
           IPERF_OS_HINT: darwin
         run: bash scripts/build.sh && bash scripts/smoke.sh
 
-      - name: Build (Windows x86_64 — Cygwin bash)
+      - name: Build (Windows x86_64 — MSYS bash)
         if: matrix.os == 'windows' && matrix.target == 'x86_64-windows'
         shell: msys2 {0}
         env:
           IPERF_TARGET_ARCH: x86_64
-          IPERF_TARGET_OS: cygwin
-          IPERF_OS_HINT: cygwin
-          IPERF_TRIPLET: x86_64-pc-cygwin
+          IPERF_TARGET_OS: msys
+          IPERF_OS_HINT: msys
+          IPERF_TRIPLET: x86_64-pc-msys
         run: bash scripts/build.sh
 
       # ---- package ----
