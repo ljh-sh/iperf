@@ -79,12 +79,23 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 		export LIBS="-lws2_32 -lpsapi"
 		# iperf3 3.19.1's configure.ac does:
 		#   AC_SEARCH_LIBS(socket, [socket], [], [echo "socket()"; exit 1])
+		#   AC_SEARCH_LIBS(inet_ntop, [nsl], [], [echo "inet_ntop()"; exit 1])
+		#   AC_SEARCH_LIBS(clock_gettime, [rt posix4])
+		#   AC_SEARCH_LIBS(nanosleep, [rt posix4])
+		#   AC_SEARCH_LIBS(clock_nanosleep, [rt posix4])
 		# AC_SEARCH_LIBS only searches its explicit list — it does NOT
 		# honor user-supplied LIBS for the lookup. So even with LIBS=
 		# -lws2_32 in env, configure falls through to "exit 1" because
-		# -lsocket doesn't exist on MinGW. Pre-seed the autoconf cache
-		# so the search short-circuits with the correct answer.
+		# -lsocket / -lnsl don't exist on MinGW. Pre-seed the autoconf
+		# cache so the searches short-circuit with the correct answer.
+		# On MinGW: socket/inet_ntop/clock_gettime/nanosleep are all in
+		# ws2_32; clock_nanosleep is not available, but the iperf3 source
+		# only uses it conditionally so "no" (skip) is safe.
 		export ac_cv_search_socket="ws2_32"
+		export ac_cv_search_inet_ntop="ws2_32"
+		export ac_cv_search_clock_gettime="ws2_32"
+		export ac_cv_search_nanosleep="ws2_32"
+		export ac_cv_search_clock_nanosleep="no"
 		;;
 	*)
 		# Generic clang fallback.
