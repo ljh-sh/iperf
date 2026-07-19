@@ -52,7 +52,7 @@ jobs:
 
       # msystem:MINGW64 on the runner gives the host-native toolchain.
       # For x86_64-windows on windows-latest that's mingw-w64-x86_64-gcc.
-      - name: Install deps (Windows MSYS2 + mingw64 + openssl + headers)
+      - name: Install deps (Windows MSYS2 + mingw64 + openssl + toolchain meta)
         if: matrix.os == 'windows'
         uses: msys2/setup-msys2@v2
         with:
@@ -61,10 +61,7 @@ jobs:
           install: >-
             git autoconf automake libtool
             make base-devel
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-gcc-libs
-            mingw-w64-x86_64-headers
-            mingw-w64-x86_64-crt
+            mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-pkg-config
 
@@ -95,17 +92,7 @@ jobs:
           IPERF_TARGET_OS: w64-mingw32
           IPERF_OS_HINT: windows
           IPERF_TRIPLET: x86_64-w64-mingw32
-        run: |
-          echo "=== which pkg provides sys/socket.h ==="
-          pacman -Fy 2>/dev/null
-          pacman -F /mingw64/include/sys/socket.h 2>&1 | head -3
-          pacman -Qo /mingw64/include/sys/socket.h 2>&1 | head -3
-          echo "=== full file list under /mingw64/include/sys ==="
-          ls /mingw64/include/sys/ 2>&1 | head -10
-          echo "=== check the gcc default search path ==="
-          x86_64-w64-mingw32-gcc -E -x c -v - </dev/null 2>&1 | grep -A 30 'search starts' | head -40
-          echo "=== debug: actual compile ==="
-          bash scripts/build.sh
+        run: bash scripts/build.sh
         # smoke on Windows is informational only — see Windows smoke step below
 
       # ---- smoke (host-side; musl smoke already ran in alpine docker) ----
