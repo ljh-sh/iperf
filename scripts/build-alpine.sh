@@ -10,7 +10,7 @@
 # Alpine AND every glibc distro (Ubuntu/Debian/Fedora/Arch).
 set -eu
 
-echo "==> apk add: build deps (musl-native toolchain)"
+echo "==> apk add: build deps (musl-native toolchain + openssl)"
 apk add --no-cache \
 	build-base \
 	autoconf \
@@ -18,7 +18,8 @@ apk add --no-cache \
 	libtool \
 	linux-headers \
 	bash \
-	python3
+	python3 \
+	openssl-dev
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 SRC="$ROOT/upstream/iperf"
@@ -39,11 +40,11 @@ mkdir -p "$BUILD_DIR"
 ( cd "$SRC" \
 	&& find . -maxdepth 2 -name Makefile -delete -o -name 'config.h' -delete -o -name 'config.status' -delete 2>/dev/null || true )
 
-echo "==> configure (musl-static + without-openssl + without-sctp)"
-# iperf3 3.19.1 doesn't recognize --disable-openssl or --disable-zc —
-# use --with-openssl=no (the actual flag the upstream checks for) and
-# let zerocopy auto-disable when sendfile() is unavailable.
-# --enable-static-bin adds --static to LDFLAGS via iperf_config_static_bin.m4.
+echo "==> configure (musl-static + with-openssl + without-sctp)"
+# v0.2.0: enable OpenSSL (RSA-based auth features). iperf3 3.19.1
+# only uses libcrypto (RSA + PEM); no TLS/SSL data channel.
+# --enable-static-bin adds --static to LDFLAGS via iperf_config_static_bin.m4
+# so the resulting binary is fully self-contained (no .so, no interpreter).
 ( cd "$BUILD_DIR" && "$SRC/configure" \
 		--srcdir="$SRC" \
 		--disable-dependency-tracking \
@@ -51,7 +52,7 @@ echo "==> configure (musl-static + without-openssl + without-sctp)"
 		--disable-shared \
 		--enable-static \
 		--enable-static-bin \
-		--with-openssl=no \
+		--with-openssl \
 		--without-sctp )
 
 echo "==> make"

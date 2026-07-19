@@ -25,14 +25,17 @@ JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.nproc 2>/dev/null 
 # Minimal configure args. By default:
 #   --disable-dependency-tracking   (one-shot CI build, no dep graph)
 #   --disable-silent-rules          (so `make` logs each step — CI shows it)
-#   --with-openssl=no               (no TLS, no extra audit surface)
+#   --with-openssl                  (RSA auth features; static-link only)
 #   --without-sctp                  (SCTP rare on portable targets)
 #   --disable-shared --enable-static (build static lib only, no .dylib)
 # iperf3's --disable-openssl and --disable-zc are unrecognized and just
-# emit warnings — use --with-openssl=no and let zerocopy auto-disable.
-# NOTE: --enable-static-bin is musl-only (adds --static to LDFLAGS via
-# iperf_config_static_bin.m4; macOS ld rejects --static).
-CONFIGURE_ARGS="--disable-dependency-tracking --disable-silent-rules --with-openssl=no --without-sctp --disable-shared --enable-static"
+# emit warnings — use --with-openssl (without value = detect) and let
+# zerocopy auto-disable. NOTE: --enable-static-bin is musl-only (adds
+# --static to LDFLAGS via iperf_config_static_bin.m4; macOS ld rejects
+# --static). On macOS/Windows we set --enable-static (default=yes per
+# iperf3 help) so libiperf.a is built, but the binary itself links
+# dynamically to system frameworks (Apple model) or to ws2_32 (MinGW).
+CONFIGURE_ARGS="--disable-dependency-tracking --disable-silent-rules --with-openssl --without-sctp --disable-shared --enable-static"
 
 # Cross-compile: IPERF_TARGET_ARCH (x86_64 / aarch64), IPERF_TARGET_OS
 # (apple-darwin / w64-mingw32), IPERF_TRIPLET.
@@ -50,15 +53,28 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 		# macOS binaries dynamically link to /usr/lib + /System/Library
 		# frameworks — that's the Apple distribution model. We only
 		# verify no Homebrew dylibs leak (see release.yml otool check).
+		# Homebrew openssl is keg-only; point pkg-config at it so iperf3's
+		# ax_check_openssl.m4 finds it. Without this, configure falls
+		# back to Apple's deprecated /usr/include/openssl (3.0-only,
+		# removed in newer SDKs).
+		OPENSSL_PREFIX="$(brew --prefix openssl@3 2>/dev/null || brew --prefix openssl 2>/dev/null || true)"
+		if [ -n "$OPENSSL_PREFIX" ]; then
+			export PKG_CONFIG_PATH="$OPENSSL_PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+		fi
 		export CC=clang
 		export CFLAGS="-arch $TARGET_ARCH -O2 -D_FORTIFY_SOURCE=2"
 		export LDFLAGS="-arch $TARGET_ARCH"
 		;;
 	windows)
-		# MinGW cross-toolchain.
+		# MinGW cross-toolchain. iperf3 on MinGW has a long-standing
+		# portability gap: sys/socket.h (and friends) require winsock2.h
+		# to be included first. Force-include winsock2.h via CFLAGS so
+		# every TU gets it before its first network header. Also define
+		# _WIN32_WINNT=0x0601 (Windows 7+) so newer MinGW headers
+		# expose the full API surface iperf3 needs.
 		export CC="${TARGET_ARCH}-w64-mingw32-gcc"
 		export CXX="${TARGET_ARCH}-w64-mingw32-g++"
-		export CFLAGS="-O2 -static"
+		export CFLAGS="-O2 -static -D_WIN32_WINNT=0x0601 -include winsock2.h"
 		export LDFLAGS="-static"
 		# iperf3's configure checks for socket() etc. via AC_SEARCH_LIBS
 		# — MinGW ships socket() in -lws2_32 and process APIs in -lpsapi.
