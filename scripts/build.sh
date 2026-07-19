@@ -119,6 +119,42 @@ fi
 ( cd "$SRC" \
 	&& find . -maxdepth 2 -name Makefile -delete -o -name 'config.h' -delete -o -name 'config.status' -delete 2>/dev/null || true )
 
+# MinGW portability patch: iperf3's POSIX includes (sys/socket.h,
+# netdb.h, etc.) require <winsock2.h> to be included first on
+# MSYS2/MinGW. Force-include via CFLAGS works for the build itself
+# but autotools-generated compile rules emit explicit -I paths that
+# shadow the system MinGW includes, so the force-include can't find
+# winsock2.h either. The robust fix is to sed-patch each affected
+# source file to prepend <winsock2.h> before its first network
+# header. Idempotent — safe to re-run.
+if [ "${IPERF_OS_HINT:-}" = "windows" ]; then
+	echo "==> windows patch: prepend <winsock2.h> before POSIX network headers"
+	( cd "$SRC/src" && \
+		for f in *.c *.h; do
+			[ -f "$f" ] || continue
+			# Skip if already patched
+			grep -q '__IPERF_WIN32_WS2_PATCH__' "$f" 2>/dev/null && continue
+			# Skip files that don't have network headers (e.g. main.c does)
+			grep -qE '#include[[:space:]]*<sys/socket\.h>|<netinet/in\.h>|<netdb\.h>' "$f" || continue
+			# Insert winsock2.h right before the first such include
+			awk '
+				/^#include[[:space:]]*<sys\/socket\.h>|^#include[[:space:]]*<netinet\/in\.h>|^#include[[:space:]]*<netdb\.h>/ \
+					&& !done { \
+					print "#define __IPERF_WIN32_WS2_PATCH__"; \
+					print "#ifdef _WIN32"; \
+					print "#  ifndef _WINSOCK2_H_"; \
+					print "#    include <winsock2.h>"; \
+					print "#    include <ws2tcpip.h>"; \
+					print "#  endif"; \
+					print "#endif"; \
+					done=1 \
+				} \
+				{ print }
+			' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+		done \
+	)
+fi
+
 mkdir -p "$BUILD_DIR"
 
 echo "==> configure"
