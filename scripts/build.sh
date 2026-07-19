@@ -72,9 +72,11 @@ if [ "$TARGET_ARCH" != "$HOST_ARCH" ] || [ -n "${IPERF_TARGET_OS:-}" ]; then
 		# MSYS2 installed (or runtime dll bundled). iperf3's upstream
 		# doesn't formally support Windows, but MSYS is the closest
 		# POSIX layer setup-msys2@v2 offers (CYGWIN64 isn't supported).
+		# WIN32_LEAN_AND_MEAN skips wincrypt.h's deprecated X509_NAME
+		# numeric define that conflicts with OpenSSL's typedef.
 		export CC="gcc"
 		export CXX="g++"
-		export CFLAGS="-O2 -D_FORTIFY_SOURCE=2"
+		export CFLAGS="-O2 -D_FORTIFY_SOURCE=2 -DWIN32_LEAN_AND_MEAN"
 		export LDFLAGS=""
 		;;
 	*)
