@@ -1,0 +1,12 @@
+title: iperf
+description: esnet/iperf (iperf3) 的 vendored 静态分发 (Linux/macOS/Windows)
+repo: iperf
+baseurl: ""
+url: "https://iperf.ljh.sh"
+theme: ~
+
+permalink: pretty
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
