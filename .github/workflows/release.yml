@@ -68,7 +68,7 @@ jobs:
             libtool
             pkg-config
             openssl
-            libssl-devel
+            openssl-devel
             diffutils
 
       # ---- build ----
