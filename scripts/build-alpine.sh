@@ -40,9 +40,13 @@ mkdir -p "$BUILD_DIR"
 ( cd "$SRC" \
 	&& find . -maxdepth 2 -name Makefile -delete -o -name 'config.h' -delete -o -name 'config.status' -delete 2>/dev/null || true )
 
-echo "==> configure (musl-static + with-openssl + without-sctp)"
+echo "==> configure (musl-static + auto-detect openssl + without-sctp)"
 # v0.2.0: enable OpenSSL (RSA-based auth features). iperf3 3.19.1
 # only uses libcrypto (RSA + PEM); no TLS/SSL data channel.
+# IMPORTANT: --with-openssl=yes / =no are both rejected by iperf3's
+# ax_check_openssl.m4 (line 45: "yes/no/y/ye/empty" → AC_MSG_ERROR).
+# The correct way to enable autodetect is to OMIT --with-openssl
+# entirely; the default action tries pkg-config first, then /usr/lib/ssl.
 # --enable-static-bin adds --static to LDFLAGS via iperf_config_static_bin.m4
 # so the resulting binary is fully self-contained (no .so, no interpreter).
 ( cd "$BUILD_DIR" && "$SRC/configure" \
@@ -52,7 +56,6 @@ echo "==> configure (musl-static + with-openssl + without-sctp)"
 		--disable-shared \
 		--enable-static \
 		--enable-static-bin \
-		--with-openssl=yes \
 		--without-sctp )
 
 echo "==> make"
